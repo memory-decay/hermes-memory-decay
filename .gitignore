@@ -1,11 +1,10 @@
-__pycache__/
-*.pyc
 *.pyo
 *$py.class
 *.egg-info/
 dist/
 build/
 .venv/
+venv/
 .eggs/
 *.egg
 .mypy_cache/
