@@ -1,47 +1,63 @@
-   - `category`: Best-fit category -- do NOT default everything to "fact"
-   - `mtype`: Memory type matching the category (fact, episode, preference, decision)
+---
+name: memory-decay-remember
+description: Store important information into persistent memory with proper type classification and association linking.
+version: 1.1.0
+license: MIT
+metadata:
+  hermes:
+    tags: [Memory, Decay, Remember, Store, Persistence]
+    related_skills: [memory-decay-recall, memory-decay-forget, memory-decay-status, memory-decay-install]
+---
 
-4. **Confirm** what was saved, including the category and importance used.
+# Remember -- Store Memories
 
-## Batch Mode
+Store important information using `memory_store` or `memory_store_batch`.
 
-When multiple memories should be saved at once (e.g., end of a productive session), use `memory_store_batch` with an `items` array. More efficient than repeated individual stores.
+## Pre-flight: Search Before Storing
 
-Example:
-```json
-{
-  "items": [
-    {"text": "User prefers dark mode", "importance": 0.9, "category": "preference", "mtype": "preference"},
-    {"text": "Decided to use Redis for caching", "importance": 0.85, "category": "decision", "mtype": "decision"},
-    {"text": "Auth middleware migration completed", "importance": 0.4, "category": "episode", "mtype": "episode"}
-  ]
-}
+Before storing, do a quick `memory_search` to:
+1. **Avoid duplicates** -- if it already exists, skip or update via forget+store
+2. **Find association targets** -- link new memories to related existing ones
+
+## Classification
+
+| mtype | When | importance | example |
+|-------|------|------------|---------|
+| preference | User likes/dislikes, style, workflow | 0.8-1.0 | "Korean for conversation" |
+| decision | Choice made with rationale | 0.8-0.9 | "SQLite over Postgres -- single-node" |
+| fact | Technical knowledge, env detail, API quirk | 0.7-0.9 | "Auth returns 4xx on token expiry" |
+| episode | Session event, task completed | 0.3-0.6 | "Migrated auth middleware to v2" |
+
+**category** is independent from mtype. Use free-text tags: `backend`, `deploy`, `auth`, `config`, `debugging`, etc.
+
+## Association Pattern
+
+When a new memory relates to an existing one, link them:
+
+```
+1. memory_search("related topic")  → finds mem_abc123
+2. memory_store(text="new detail", associations=["mem_abc123"])
 ```
 
-## Importance Calibration Guide
+Associations enable the testing effect: recalling one memory boosts the other.
 
-| Situation | Importance | Reasoning |
-|-----------|------------|-----------|
-| User says "remember this" | 0.9-1.0 | Explicit request, high intent |
-| User corrects a mistake | 0.85-0.95 | Prevents future errors |
-| Technical decision with rationale | 0.8-0.9 | Guides future choices |
-| Discovered API behavior / bug | 0.7-0.85 | Reference for debugging |
-| User preference (likes/dislikes) | 0.8-1.0 | High retention, used often |
-| Session summary / what was done | 0.3-0.5 | Transient, fades naturally |
-| Completed task / feature | 0.4-0.6 | Useful context but not critical |
+## End-of-Session Batch
+
+At the end of a productive session, batch-store key takeaways:
+
+```
+memory_store_batch({
+  "items": [
+    {"text": "Decided to use Redis for session cache", "mtype": "decision", "category": "architecture", "importance": 0.85},
+    {"text": "Fixed race condition in order service", "mtype": "episode", "category": "debugging", "importance": 0.4},
+    {"text": "User prefers short commit messages", "mtype": "preference", "importance": 0.9}
+  ]
+})
+```
 
 ## What NOT to Store
 
-- Ephemeral instructions that won't matter next session
-- Information easily re-discovered (e.g., "run `ls` to see files")
-- Temporary task progress (use session_search instead)
+- Ephemeral instructions (re-discoverable next session)
+- Temporary task progress (use session_search)
 - Raw data dumps or full conversation transcripts
 - Trivial/obvious information
-
-## Rules
-
-- Do NOT write memory files to any file path. Always use `memory_store` / `memory_store_batch`.
-- If the user provides specific text, store it verbatim.
-- If the user references the conversation, summarize the relevant context before storing.
-- Don't wait for a command -- store proactively when the conditions above are met.
-- Prefer `preference` for user corrections over `fact`.

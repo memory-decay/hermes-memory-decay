@@ -1,18 +1,29 @@
-- **No matches**: Tell the user nothing was found. Suggest different search terms.
-- **Incorrect memory**: If the user wants to correct a memory, delete the old one first, then store the corrected version with `memory_store`.
-- **"Forget everything about X"**: Search broadly, show all matches, confirm batch deletion.
+---
+name: memory-decay-forget
+description: Safely delete or correct stored memories. Always confirms before deletion.
+version: 1.1.0
+license: MIT
+metadata:
+  hermes:
+    tags: [Memory, Decay, Forget, Delete, Correction]
+    related_skills: [memory-decay-remember, memory-decay-recall, memory-decay-status, memory-decay-install]
+---
 
-## Correction Workflow
+# Forget -- Delete Memories
 
-When a stored memory is wrong:
-1. Search for the incorrect memory
-2. Show it to the user for confirmation
-3. Delete with `memory_forget`
-4. Store the correct version with `memory_store`
+Find and permanently delete stored memories.
+
+## Workflow
+
+1. **Search** to find the target: `memory_search(query)`
+2. **Show** matching memories with IDs and content
+3. **Confirm** with the user before deleting anything
+4. **Delete** with `memory_forget(memory_id)`
+5. **Correct** if needed: delete old + store new version
 
 ## Rules
 
-- Never delete memories without explicit user confirmation.
-- Always search first -- never guess memory IDs.
-- After deletion, the memory is permanently gone and cannot be recovered.
-- Memories also fade naturally via decay -- only use forget for immediate removal.
+- Never delete without explicit user confirmation
+- Always search first -- never guess memory IDs
+- Deletion is permanent and irreversible
+- "Forget everything about X" → search broadly, show all, confirm batch delete

@@ -7,33 +7,54 @@ to use memory tools. Kept concise to minimize token overhead.
 SYSTEM_PROMPT_FRAGMENT = """\
 # Memory System (memory-decay)
 
-You have access to a persistent memory system with human-like decay. Memories \
-naturally fade over time but are reinforced when recalled.
+You have a persistent memory that works like human memory: it decays over time \
+but strengthens on recall. Use it proactively -- don't wait for the user to ask.
 
-## When to use memory tools
+## Core Loop
 
-- **memory_search**: Before answering questions that might benefit from past context. \
-Search proactively when the user references prior conversations or when continuity matters.
-- **memory_store**: After learning important facts, user preferences, decisions, or \
-conversation highlights. Set higher importance (0.8-1.0) for critical facts, lower \
-(0.3-0.5) for casual observations.
-- **memory_store_batch**: When multiple memories should be saved at once (e.g., end \
-of a productive session).
-- **memory_forget**: Only when the user explicitly asks to forget something, or to \
-correct a stored error. Search first to find the memory ID.
-- **memory_status**: When asked about memory health or to debug memory issues.
+1. **Recall early, recall often.** When starting any non-trivial task, search \
+memory first. Context from past sessions shapes better responses.
+2. **Save what matters.** Don't dump everything. Save facts that will reduce \
+future friction, decisions that will prevent re-litigation, and preferences \
+that affect how you work.
+3. **Link related memories.** When storing something that relates to an \
+existing memory, include the `associations` field with the existing memory ID.
 
-## Memory types (mtype)
-- `fact` -- Declarative knowledge (default)
-- `episode` -- Conversation events or experiences
-- `preference` -- User likes, dislikes, working style
-- `decision` -- Choices made and their rationale
+## When to Recall (be proactive)
 
-## Freshness
-Search results include a `freshness` indicator:
-- `fresh` -- Recently stored or recalled, high confidence
-- `normal` -- Moderate age, still reliable
-- `stale` -- Old and fading, may be outdated -- verify before relying on it
+- Starting work on a task, project, or codebase you've seen before
+- User's question might have been discussed in a past session
+- A decision was made before that affects the current situation
+- User preferences might change how you should respond
+- Debugging something -- past context often contains the fix
+
+## When to Store
+
+- User reveals a preference, workflow, or working style
+- A technical decision is made with tradeoffs
+- You discover a non-obvious behavior, API quirk, or environment fact
+- User corrects you -- save the correction to prevent repeating the mistake
+- Complex task completed -- store a concise summary for future reference
+- End of a productive session -- batch-store key takeaways
+
+## Memory Types
+
+| mtype | Use case | Importance |
+|-------|----------|------------|
+| preference | User likes, dislikes, communication style | 0.8-1.0 |
+| decision | Choices made, with rationale and alternatives | 0.8-0.9 |
+| fact | Technical knowledge, environment details, API behavior | 0.7-0.9 |
+| episode | What happened in a session, task completed | 0.3-0.6 |
+
+## Important Rules
+
+- `category` is a free-text tag (e.g., "backend", "deploy", "auth"). \
+`mtype` is the structured type above. They are independent.
+- Always search before storing to avoid duplicates and find association targets.
+- Include `associations` when memories relate to each other -- this enables \
+the testing effect which slows decay for connected memories.
+- Show memory IDs when presenting results so the user can reference or delete them.
+- If a memory is stale, verify it before acting on it.
 """
 
 

@@ -1,44 +1,46 @@
-3. **Present results clearly:**
-   - Show the memory content, category, and relevance score
-   - Indicate freshness with action guidance:
-     - **fresh** (storage_score > 0.7) -- reliable, act on it confidently
-     - **normal** (0.3 < storage_score <= 0.7) -- likely accurate, verify if consequential
-     - **stale** (storage_score <= 0.3) -- may be outdated, verify before acting or warn user
-4. **If results are stale**, warn the user that the information may have changed.
+---
+name: memory-decay-recall
+description: Proactively search and retrieve past memories before responding when context would improve the answer.
+version: 1.1.0
+license: MIT
+metadata:
+  hermes:
+    tags: [Memory, Decay, Recall, Search, Context]
+    related_skills: [memory-decay-remember, memory-decay-forget, memory-decay-status, memory-decay-install]
+---
 
-## Proactive Recall
+# Recall -- Search Memories
 
-Don't wait for a command. Search automatically when:
-- User asks about prior decisions or history
-- User says "like last time" or "you remember when..."
-- A recurring topic comes up
-- User preferences might affect the current response
-- You're about to make a recommendation and context exists
+Retrieve stored memories using `memory_search`. Be proactive, not reactive.
 
-## Query Tips
+## When to Search (before the user asks)
 
-| Goal | Good Query | Bad Query |
+- **Task kickoff**: Starting work on something you've seen before → search for past context
+- **Decision point**: About to recommend an approach → search for prior decisions on similar topics
+- **User preference check**: Response style might benefit from knowing user preferences → search
+- **Debugging**: Error or unexpected behavior → search for past encounters with the same issue
+- **Cross-session continuity**: User references "last time", "we decided", "like before" → search immediately
+
+## Query Strategy
+
+| Goal | Good query | Bad query |
 |------|-----------|-----------|
-| Find a past decision | "which database did we choose and why" | "database" |
-| Recall user preference | "user's preferred coding style" | "style" |
-| Find debugging context | "auth middleware error we fixed" | "error" |
-| Session history | "what we worked on for the migration" | "migration" |
+| Past decision | "which database did we choose and why" | "database" |
+| User preference | "user's preferred coding style or conventions" | "style" |
+| Debug context | "race condition we fixed in order service" | "error" |
+| Session history | "what we implemented for the auth migration" | "migration" |
 
-## Result Interpretation
+## Presenting Results
 
-Each result includes:
-- `id`: Memory identifier (e.g., `mem_abc123`) -- for deletion if needed
-- `text`: The stored content
-- `score`: Combined relevance score (retrieval + decay-weighted storage)
-- `storage_score`: Activation/decay level -- maps to freshness
-- `retrieval_score`: Raw semantic similarity (0-1)
-- `category`: Memory type (fact, episode, preference, decision)
-- `speaker`: Who said it (user, assistant, or empty)
+- Show content, category, and memory ID (`mem_xxx`)
+- Map storage_score to freshness:
+  - **fresh** (> 0.7) -- act on it confidently
+  - **normal** (0.3-0.7) -- reliable, verify if consequential
+  - **stale** (< 0.3) -- warn user, may be outdated
+- When results overlap, synthesize rather than listing all of them
 
 ## Rules
 
-- If no results are found, say so honestly -- never fabricate memories.
-- Show the memory ID (`mem_xxx`) so the user can reference or delete specific memories.
-- Recall reinforces memories -- the testing effect boosts their activation.
-- When multiple results overlap, synthesize rather than repeating all of them.
-- Stale results are still useful for context but should be verified before acting on.
+- Never fabricate memories if nothing is found. Say "no relevant memories found."
+- Recall reinforces memories (testing effect) -- this is a feature, not a bug.
+- Default top_k=5. Increase to 10 for broad sweeps ("everything about X").
