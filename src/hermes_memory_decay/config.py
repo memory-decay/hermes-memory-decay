@@ -16,9 +16,9 @@ _PATH_KEYS = {"python_path", "memory_decay_path", "db_path", "experiment_dir"}
 
 DEFAULTS: dict = {
     "python_path": "python3",
-    "memory_decay_path": str(Path.home() / "workspace" / "memory-decay-core"),
+    "memory_decay_path": "",  # MUST be set in config.yaml
     "port": 8100,
-    "db_path": str(Path.home() / ".hermes" / "memory-decay" / "memories.db"),
+    "db_path": "",  # Auto-generated from HERMES_HOME if not set
     "embedding_provider": "gemini",
     "embedding_model": None,
     "embedding_api_key_env": "GEMINI_API_KEY",
@@ -35,6 +35,9 @@ def load_config(plugin_dir: Path) -> dict:
     """Load plugin config from config.yaml, falling back to defaults."""
     config = dict(DEFAULTS)
 
+    # Determine HERMES_HOME (same logic as Hermes plugins.py L190)
+    hermes_home = os.environ.get("HERMES_HOME", os.path.expanduser("~/.hermes"))
+
     config_path = plugin_dir / "config.yaml"
     if config_path.exists():
         try:
@@ -50,16 +53,28 @@ def load_config(plugin_dir: Path) -> dict:
         except Exception as e:
             logger.warning("Failed to load config from %s: %s", config_path, e)
     else:
-        logger.debug(
-            "No config.yaml found at %s, using defaults. "
-            "Copy config.yaml.example to config.yaml to customize.",
-            plugin_dir / "config.yaml",
+        logger.warning(
+            "No config.yaml found in %s. "
+            "Copy config.yaml.example to config.yaml and edit it.",
+            plugin_dir,
         )
+
+    # Auto-generate db_path if not set
+    if not config.get("db_path"):
+        config["db_path"] = os.path.join(hermes_home, "memory-decay", "memories.db")
 
     # Expand ~ in path values
     for key in _PATH_KEYS:
         val = config.get(key)
         if isinstance(val, str):
             config[key] = os.path.expanduser(val)
+
+    # Validate required fields
+    if not config.get("memory_decay_path"):
+        logger.warning(
+            "memory_decay_path is not set. "
+            "The server will not start. Edit %s and set memory_decay_path.",
+            config_path,
+        )
 
     return config

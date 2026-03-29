@@ -46,9 +46,28 @@ def test_ensure_running_starts_server():
     mock_proc.stderr.readline = MagicMock(return_value=b"")
 
     with patch("subprocess.Popen", return_value=mock_proc), \
+         patch("os.path.isdir", return_value=True), \
          patch.object(mgr._client, "health", return_value={"status": "ok"}):
         mgr.ensure_running()
         assert mgr.is_running()
+
+
+def test_ensure_running_fails_without_path():
+    mgr = ServerManager(_make_config(memory_decay_path=""))
+    try:
+        mgr.ensure_running()
+        assert False, "Should have raised RuntimeError"
+    except RuntimeError as e:
+        assert "memory_decay_path is not configured" in str(e)
+
+
+def test_ensure_running_fails_if_path_missing():
+    mgr = ServerManager(_make_config(memory_decay_path="/nonexistent/path"))
+    try:
+        mgr.ensure_running()
+        assert False, "Should have raised RuntimeError"
+    except RuntimeError as e:
+        assert "does not exist" in str(e)
 
 
 def test_ensure_running_skips_if_healthy():

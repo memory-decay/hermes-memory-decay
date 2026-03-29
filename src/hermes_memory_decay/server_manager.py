@@ -58,6 +58,20 @@ class ServerManager:
         port = self._config["port"]
         db_path = self._config["db_path"]
 
+        if not memory_decay_path:
+            raise RuntimeError(
+                "memory_decay_path is not configured. "
+                "Edit ~/.hermes/plugins/hermes-memory-decay/config.yaml "
+                "and set memory_decay_path to the absolute path of your "
+                "memory-decay-core repository."
+            )
+
+        if not os.path.isdir(memory_decay_path):
+            raise RuntimeError(
+                f"memory_decay_path does not exist: {memory_decay_path}. "
+                "Clone memory-decay-core and set the correct path in config.yaml."
+            )
+
         # Ensure DB directory exists
         db_dir = os.path.dirname(db_path)
         if db_dir:
@@ -91,6 +105,7 @@ class ServerManager:
         env = {**os.environ, "PYTHONPATH": os.path.join(memory_decay_path, "src")}
 
         logger.info("Starting memory-decay server on port %d", port)
+        logger.debug("Server command: %s", " ".join(args))
 
         self._process = subprocess.Popen(
             args,
