@@ -19,14 +19,25 @@ That's it. The script:
 3. Copies plugin files to `~/.hermes/plugins/`
 4. Generates `config.yaml` with detected paths
 5. Installs skills to `~/.hermes/skills/`
-6. Checks for `GEMINI_API_KEY`
+6. Optional: warns if embedding API key missing
 
-Then set your embedding API key and verify:
+Verify installation:
 
 ```
-export GEMINI_API_KEY=your-key-here
 hermes plugins list
 ```
+
+### Embedding API key (optional)
+
+For semantic search embeddings, set an API key. Supports multiple providers:
+
+| Provider | Env var | Setup |
+|----------|---------|-------|
+| `gemini` (default) | `GEMINI_API_KEY` | `export GEMINI_API_KEY=your-key` |
+| `openai` | `OPENAI_API_KEY` | `export OPENAI_API_KEY=your-key` + set `embedding_provider: openai` in config |
+| `local` | — | No key needed. Set `embedding_provider: local` in config |
+
+Or skip it entirely — the plugin works without embeddings (keyword-only search).
 
 ## Update
 
@@ -67,13 +78,7 @@ tick_interval_seconds: 3600        # 1 hour per decay tick
 auto_start_server: true
 ```
 
-### Embedding providers
 
-| Provider | Env var | Notes |
-|----------|---------|-------|
-| `gemini` | `GEMINI_API_KEY` | Default. Free tier available. |
-| `openai` | `OPENAI_API_KEY` | Set `embedding_provider: openai` in config |
-| `local` | — | Requires `torch` + `sentence-transformers` |
 
 ## Tools
 

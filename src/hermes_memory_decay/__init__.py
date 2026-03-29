@@ -21,8 +21,8 @@ _config: dict = {}
 def _check_prerequisites() -> bool:
     """Verify plugin prerequisites without starting the server.
 
-    Checks: config.yaml exists, memory_decay_path is set and exists,
-    embedding API key env var is set.
+    Checks: config.yaml exists, memory_decay_path is set and exists.
+    Embedding API key is only required for gemini/openai providers.
     """
     config_path = _PLUGIN_DIR / "config.yaml"
     if not config_path.exists():
@@ -31,9 +31,11 @@ def _check_prerequisites() -> bool:
         return False
     if not Path(_config["memory_decay_path"]).is_dir():
         return False
-    api_key_env = _config.get("embedding_api_key_env", "GEMINI_API_KEY")
-    if not os.environ.get(api_key_env):
-        return False
+    provider = _config.get("embedding_provider", "gemini")
+    if provider != "local":
+        api_key_env = _config.get("embedding_api_key_env", "GEMINI_API_KEY")
+        if not os.environ.get(api_key_env):
+            return False
     return True
 
 
@@ -71,7 +73,6 @@ def register(ctx) -> None:
         description="Search memories by semantic similarity",
         emoji="🔍",
         check_fn=_check_prerequisites,
-        requires_env=["GEMINI_API_KEY"],
     )
     ctx.register_tool(
         name="memory_store",
@@ -81,7 +82,6 @@ def register(ctx) -> None:
         description="Store a new memory",
         emoji="💾",
         check_fn=_check_prerequisites,
-        requires_env=["GEMINI_API_KEY"],
     )
     ctx.register_tool(
         name="memory_store_batch",
@@ -91,7 +91,6 @@ def register(ctx) -> None:
         description="Store multiple memories in one call",
         emoji="📦",
         check_fn=_check_prerequisites,
-        requires_env=["GEMINI_API_KEY"],
     )
     ctx.register_tool(
         name="memory_forget",
@@ -101,7 +100,6 @@ def register(ctx) -> None:
         description="Delete a specific memory by ID",
         emoji="🗑️",
         check_fn=_check_prerequisites,
-        requires_env=["GEMINI_API_KEY"],
     )
     ctx.register_tool(
         name="memory_status",
@@ -111,7 +109,6 @@ def register(ctx) -> None:
         description="Check memory system health and stats",
         emoji="📊",
         check_fn=_check_prerequisites,
-        requires_env=["GEMINI_API_KEY"],
     )
 
     ctx.register_hook("on_session_start", _on_session_start)

@@ -6,8 +6,6 @@ description: >
 author: roach
 manifest_version: 1
 
-requires_env: [GEMINI_API_KEY]
-
 provides_tools:
   - memory_search
   - memory_store
