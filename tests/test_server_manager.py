@@ -38,7 +38,8 @@ def test_get_client_returns_client():
     assert client._base_url == "http://127.0.0.1:9999"
 
 
-def test_ensure_running_starts_server():
+def test_ensure_running_starts_server(tmp_path, monkeypatch):
+    monkeypatch.setenv("HERMES_HOME", str(tmp_path / ".hermes"))
     mgr = ServerManager(_make_config())
     mock_proc = MagicMock()
     mock_proc.poll.return_value = None
@@ -50,6 +51,7 @@ def test_ensure_running_starts_server():
          patch.object(mgr._client, "health", return_value={"status": "ok"}):
         mgr.ensure_running()
         assert mgr.is_running()
+        assert mgr._pid_file.exists()
 
 
 def test_ensure_running_fails_without_path():

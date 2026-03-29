@@ -18,25 +18,42 @@ _server_manager = None
 _config: dict = {}
 
 
-def _check_prerequisites() -> bool:
-    """Verify plugin prerequisites without starting the server.
+def _load_current_config() -> dict:
+    """Load the latest config from disk for tool availability checks."""
+    from .config import load_config
 
-    Checks: config.yaml exists, memory_decay_path is set and exists.
-    Embedding API key is only required for gemini/openai providers.
-    """
+    return load_config(_PLUGIN_DIR)
+
+
+def _check_prerequisites(require_embedding_key: bool = True) -> bool:
+    """Verify plugin prerequisites without starting the server."""
     config_path = _PLUGIN_DIR / "config.yaml"
     if not config_path.exists():
         return False
-    if not _config.get("memory_decay_path"):
+
+    config = _load_current_config()
+    if not config.get("memory_decay_path"):
         return False
-    if not Path(_config["memory_decay_path"]).is_dir():
+    if not Path(config["memory_decay_path"]).is_dir():
         return False
-    provider = _config.get("embedding_provider", "gemini")
-    if provider != "local":
-        api_key_env = _config.get("embedding_api_key_env", "GEMINI_API_KEY")
+
+    provider = config.get("embedding_provider", "gemini")
+    if require_embedding_key and provider != "local":
+        api_key_env = config.get("embedding_api_key_env", "GEMINI_API_KEY")
         if not os.environ.get(api_key_env):
             return False
+
     return True
+
+
+def _check_tool_prerequisites() -> bool:
+    """Tools that need embeddings require a configured provider key."""
+    return _check_prerequisites(require_embedding_key=True)
+
+
+def _check_status_prerequisites() -> bool:
+    """Status only needs the core path configured so health can be reported."""
+    return _check_prerequisites(require_embedding_key=False)
 
 
 def register(ctx) -> None:
@@ -72,7 +89,7 @@ def register(ctx) -> None:
         handler=handle_memory_search,
         description="Search memories by semantic similarity",
         emoji="🔍",
-        check_fn=_check_prerequisites,
+        check_fn=_check_tool_prerequisites,
     )
     ctx.register_tool(
         name="memory_store",
@@ -81,7 +98,7 @@ def register(ctx) -> None:
         handler=handle_memory_store,
         description="Store a new memory",
         emoji="💾",
-        check_fn=_check_prerequisites,
+        check_fn=_check_tool_prerequisites,
     )
     ctx.register_tool(
         name="memory_store_batch",
@@ -90,7 +107,7 @@ def register(ctx) -> None:
         handler=handle_memory_store_batch,
         description="Store multiple memories in one call",
         emoji="📦",
-        check_fn=_check_prerequisites,
+        check_fn=_check_tool_prerequisites,
     )
     ctx.register_tool(
         name="memory_forget",
@@ -99,7 +116,7 @@ def register(ctx) -> None:
         handler=handle_memory_forget,
         description="Delete a specific memory by ID",
         emoji="🗑️",
-        check_fn=_check_prerequisites,
+        check_fn=_check_tool_prerequisites,
     )
     ctx.register_tool(
         name="memory_status",
@@ -108,7 +125,7 @@ def register(ctx) -> None:
         handler=handle_memory_status,
         description="Check memory system health and stats",
         emoji="📊",
-        check_fn=_check_prerequisites,
+        check_fn=_check_status_prerequisites,
     )
 
     ctx.register_hook("on_session_start", _on_session_start)

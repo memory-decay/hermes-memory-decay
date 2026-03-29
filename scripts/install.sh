@@ -97,7 +97,7 @@ find_core() {
         existing=$(grep '^memory_decay_path:' "$PLUGIN_DIR/config.yaml" 2>/dev/null | \
             head -1 | sed 's/^memory_decay_path:[[:space:]]*//' || true)
         if [[ -n "$existing" ]]; then
-            existing=$(eval echo "$existing")
+            existing="${existing/#\~/$HOME}"
             if [[ -d "$existing/src/memory_decay" ]]; then
                 echo "$existing"
                 return 0
@@ -179,7 +179,7 @@ find_db() {
         existing=$(grep '^db_path:' "$PLUGIN_DIR/config.yaml" 2>/dev/null | \
             head -1 | sed 's/^db_path:[[:space:]]*//' || true)
         if [[ -n "$existing" ]]; then
-            existing=$(eval echo "$existing")
+            existing="${existing/#\~/$HOME}"
             if [[ -f "$existing" ]]; then
                 echo "$existing"
                 return 0
@@ -248,13 +248,23 @@ deploy_skills() {
 }
 
 check_api_key() {
+    # Read provider from config
+    local provider="gemini"
+    if [[ -f "$PLUGIN_DIR/config.yaml" ]]; then
+        provider=$(grep '^embedding_provider:' "$PLUGIN_DIR/config.yaml" 2>/dev/null | \
+            head -1 | sed 's/^embedding_provider:[[:space:]]*//' || echo "gemini")
+    fi
+    if [[ "$provider" == "local" ]]; then
+        log "Embedding provider: local (no API key needed)"
+        return
+    fi
     local api_key_env="GEMINI_API_KEY"
     if [[ -f "$PLUGIN_DIR/config.yaml" ]]; then
         api_key_env=$(grep '^embedding_api_key_env:' "$PLUGIN_DIR/config.yaml" 2>/dev/null | \
             head -1 | sed 's/^embedding_api_key_env:[[:space:]]*//' || echo "GEMINI_API_KEY")
     fi
     if [[ -z "${!api_key_env:-}" ]]; then
-        warn "Set $api_key_env before first use:"
+        warn "Set $api_key_env before first use (or set embedding_provider: local to skip):"
         warn "  export $api_key_env=your-key-here"
     else
         log "$api_key_env is set"
@@ -297,7 +307,7 @@ do_check() {
     fi
 
     echo ""
-    if [[ "$plugin_pending" -gt 0 ]] || [[ "$core_pending" -gt 0 ]]; then
+    if [[ "$plugin_pending" -gt 0 ]] || [[ "$core_pending" != "N/A" && "$core_pending" -gt 0 ]]; then
         log "Updates available:"
         [[ "$plugin_pending" -gt 0 ]] && echo "  hermes-memory-decay: $plugin_pending new commits"
         [[ "$core_pending" -gt 0 ]]   && echo "  memory-decay-core:   $core_pending new commits"
