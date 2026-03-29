@@ -6,6 +6,7 @@ Entry point: register(ctx) is called by the Hermes plugin loader.
 from __future__ import annotations
 
 import logging
+import os
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -15,6 +16,25 @@ _PLUGIN_DIR = Path(__file__).parent
 # Module-level state -- initialized in register()
 _server_manager = None
 _config: dict = {}
+
+
+def _check_prerequisites() -> bool:
+    """Verify plugin prerequisites without starting the server.
+
+    Checks: config.yaml exists, memory_decay_path is set and exists,
+    embedding API key env var is set.
+    """
+    config_path = _PLUGIN_DIR / "config.yaml"
+    if not config_path.exists():
+        return False
+    if not _config.get("memory_decay_path"):
+        return False
+    if not Path(_config["memory_decay_path"]).is_dir():
+        return False
+    api_key_env = _config.get("embedding_api_key_env", "GEMINI_API_KEY")
+    if not os.environ.get(api_key_env):
+        return False
+    return True
 
 
 def register(ctx) -> None:
@@ -49,7 +69,9 @@ def register(ctx) -> None:
         schema=MEMORY_SEARCH_SCHEMA,
         handler=handle_memory_search,
         description="Search memories by semantic similarity",
-        emoji="search",
+        emoji="🔍",
+        check_fn=_check_prerequisites,
+        requires_env=["GEMINI_API_KEY"],
     )
     ctx.register_tool(
         name="memory_store",
@@ -57,7 +79,9 @@ def register(ctx) -> None:
         schema=MEMORY_STORE_SCHEMA,
         handler=handle_memory_store,
         description="Store a new memory",
-        emoji="save",
+        emoji="💾",
+        check_fn=_check_prerequisites,
+        requires_env=["GEMINI_API_KEY"],
     )
     ctx.register_tool(
         name="memory_store_batch",
@@ -65,7 +89,9 @@ def register(ctx) -> None:
         schema=MEMORY_STORE_BATCH_SCHEMA,
         handler=handle_memory_store_batch,
         description="Store multiple memories in one call",
-        emoji="package",
+        emoji="📦",
+        check_fn=_check_prerequisites,
+        requires_env=["GEMINI_API_KEY"],
     )
     ctx.register_tool(
         name="memory_forget",
@@ -73,7 +99,9 @@ def register(ctx) -> None:
         schema=MEMORY_FORGET_SCHEMA,
         handler=handle_memory_forget,
         description="Delete a specific memory by ID",
-        emoji="trash",
+        emoji="🗑️",
+        check_fn=_check_prerequisites,
+        requires_env=["GEMINI_API_KEY"],
     )
     ctx.register_tool(
         name="memory_status",
@@ -81,7 +109,9 @@ def register(ctx) -> None:
         schema=MEMORY_STATUS_SCHEMA,
         handler=handle_memory_status,
         description="Check memory system health and stats",
-        emoji="chart",
+        emoji="📊",
+        check_fn=_check_prerequisites,
+        requires_env=["GEMINI_API_KEY"],
     )
 
     ctx.register_hook("on_session_start", _on_session_start)
