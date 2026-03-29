@@ -1,0 +1,1 @@
+- **stale** (< 0.3) -- may be outdated, verify before acting

@@ -1,18 +1,3 @@
-#!/usr/bin/env bash
-# Install hermes-memory-decay plugin to ~/.hermes/plugins/
-set -euo pipefail
-
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_DIR="$(dirname "$SCRIPT_DIR")"
-PLUGIN_DIR="$HOME/.hermes/plugins/hermes-memory-decay"
-
-echo "Installing hermes-memory-decay plugin..."
-
-# Create plugin directory
-mkdir -p "$PLUGIN_DIR"
-
-# Copy plugin source files
-cp "$REPO_DIR/src/hermes_memory_decay/"*.py "$PLUGIN_DIR/"
 cp "$REPO_DIR/src/hermes_memory_decay/plugin.yaml" "$PLUGIN_DIR/"
 
 # Copy config example if config doesn't already exist
@@ -23,6 +8,14 @@ if [ ! -f "$PLUGIN_DIR/config.yaml" ]; then
     fi
 else
     echo "  Existing config.yaml preserved."
+fi
+
+# Copy skills to Hermes skills directory
+SKILLS_DIR="$HOME/.hermes/skills/memory-decay"
+if [ -d "$REPO_DIR/skills" ]; then
+    mkdir -p "$SKILLS_DIR"
+    cp -r "$REPO_DIR/skills/"* "$SKILLS_DIR/"
+    echo "  Skills installed to: $SKILLS_DIR"
 fi
 
 echo ""
