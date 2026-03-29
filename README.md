@@ -33,8 +33,8 @@ For semantic search embeddings, set an API key. Supports multiple providers:
 
 | Provider | Env var | Setup |
 |----------|---------|-------|
-| `gemini` (default) | `GEMINI_API_KEY` | `export GEMINI_API_KEY=your-key` |
-| `openai` | `OPENAI_API_KEY` | `export OPENAI_API_KEY=your-key` + set `embedding_provider: openai` in config |
+| `gemini` (default) | `GEMINI_API_KEY` | `export GEMINI_API_KEY=*** |
+| `openai` | `OPENAI_API_KEY` | `export OPENAI_API_KEY=*** + set `embedding_provider: openai` in config |
 | `local` | — | No key needed. Set `embedding_provider: local` in config and install local embedding deps such as `torch` and `sentence-transformers` in the core environment |
 
 Or skip it entirely — the plugin works without embeddings (keyword-only search).
@@ -76,6 +76,8 @@ embedding_provider: gemini          # gemini | openai | local
 embedding_api_key_env: GEMINI_API_KEY
 tick_interval_seconds: 3600        # 1 hour per decay tick
 auto_start_server: true
+server_startup_timeout_ms: 15000
+max_restarts: 3
 ```
 
 ## Tools
