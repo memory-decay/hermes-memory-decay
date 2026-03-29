@@ -1,159 +1,136 @@
 # hermes-memory-decay
 
-Human-like memory with natural decay for [Hermes Agent](https://github.com/openclaw/hermes-agent). Wraps [memory-decay-core](https://github.com/memory-decay/memory-decay-core) as a sidecar server.
+Human-like memory with natural decay for [Hermes Agent](https://github.com/openclaw/hermes-agent).
 
-Memories strengthen on recall and fade over time, just like human memory. The agent uses them proactively — recalling context before you ask, saving what matters, linking related memories together.
+Memories strengthen on recall and fade over time — like real memory. The plugin wraps [memory-decay-core](https://github.com/memory-decay/memory-decay-core) as a sidecar server, giving the agent tools to store, search, and delete persistent memories across sessions.
 
-## How it works
+## Quick Start
+
+Paste this into Claude Code, Hermes Agent, or any terminal:
 
 ```
-Hermes Agent
-  ├── plugin: hermes-memory-decay (this repo)
-  │     ├── registers 5 tools (search, store, batch, forget, status)
-  │     ├── injects system prompt via pre_llm_call hook
-  │     └── auto-ticks decay on session start/end
-  └── sidecar: memory-decay-core FastAPI server
-        ├── SQLite storage with semantic + BM25 hybrid search
-        ├── graph-based associations (testing effect)
-        ├── configurable embedding providers (Gemini, OpenAI, local)
-        └── time-based decay with recall reinforcement
+git clone https://github.com/memory-decay/hermes-memory-decay.git ~/hermes-memory-decay
+bash ~/hermes-memory-decay/scripts/install.sh
 ```
 
-## Prerequisites
+That's it. The script:
+1. Finds or clones memory-decay-core
+2. Installs Python dependencies
+3. Copies plugin files to `~/.hermes/plugins/`
+4. Generates `config.yaml` with detected paths
+5. Installs skills to `~/.hermes/skills/`
+6. Checks for `GEMINI_API_KEY`
 
-- **Python 3.10+**
-- **[memory-decay-core](https://github.com/memory-decay/memory-decay-core)** installed:
-  ```bash
-  git clone https://github.com/memory-decay/memory-decay-core.git
-  cd memory-decay-core
-  pip install -e ".[server]"
-  ```
-- **Embedding provider** (one of):
-  - `gemini`: Set `GEMINI_API_KEY` env var
-  - `openai`: Set `OPENAI_API_KEY` env var
-  - `local`: Requires `torch` + `sentence-transformers`
+Then set your embedding API key and verify:
 
-## Installation
-
-### Install script (recommended)
-
-```bash
-git clone https://github.com/memory-decay/hermes-memory-decay.git
-cd hermes-memory-decay
-bash scripts/install.sh
+```
+export GEMINI_API_KEY=your-key-here
+hermes plugins list
 ```
 
-The script:
-- Copies plugin files to `~/.hermes/plugins/hermes-memory-decay/`
-- Creates a starter `config.yaml` (edit before first use)
-- Installs skills to `~/.hermes/skills/memory-decay/`
-- Respects `HERMES_HOME` if set
+## Update
 
-### Manual install
+Re-run the same script. It preserves your `config.yaml` and memory database:
 
-```bash
-mkdir -p ~/.hermes/plugins/hermes-memory-decay
-cp src/hermes_memory_decay/*.py ~/.hermes/plugins/hermes-memory-decay/
-cp src/hermes_memory_decay/plugin.yaml ~/.hermes/plugins/hermes-memory-decay/
-# Create config.yaml from example and edit it
-cp src/hermes_memory_decay/config.yaml.example ~/.hermes/plugins/hermes-memory-decay/config.yaml
 ```
+bash ~/hermes-memory-decay/scripts/install.sh --update
+```
+
+Or if you cloned elsewhere:
+
+```
+bash scripts/install.sh --update
+```
+
+What gets updated:
+| Path | Behavior |
+|------|----------|
+| `~/.hermes/plugins/hermes-memory-decay/*.py` | Overwritten (code updates) |
+| `~/.hermes/plugins/hermes-memory-decay/config.yaml` | Preserved |
+| `~/.hermes/skills/memory-decay/` | New/updated files added, existing untouched |
+| `~/.hermes/memory-decay/memories.db` | Never touched |
+| `memory-decay-core` | `git pull --ff-only` |
+| `hermes-memory-decay` | `git pull --ff-only` |
 
 ## Configuration
 
-Edit `~/.hermes/plugins/hermes-memory-decay/config.yaml`:
+Config lives at `~/.hermes/plugins/hermes-memory-decay/config.yaml` (auto-generated on install, preserved on update):
 
 ```yaml
-# Required — absolute path to your memory-decay-core clone
-memory_decay_path: /home/you/memory-decay-core
-
-# Python interpreter (use venv path if applicable)
+memory_decay_path: /home/you/.local/share/hermes-memory-decay/memory-decay-core
 python_path: python3
-
-# Server
 port: 8100
-auto_start_server: true
-server_startup_timeout_ms: 15000
-
-# Embedding
-embedding_provider: gemini
+db_path: ~/.hermes/memory-decay/memories.db
+embedding_provider: gemini          # gemini | openai | local
 embedding_api_key_env: GEMINI_API_KEY
-
-# Storage (auto-generated from HERMES_HOME if omitted)
-# db_path: ~/.hermes/memory-decay/memories.db
-
-# Decay
-tick_interval_seconds: 3600  # 1 hour per tick
+tick_interval_seconds: 3600        # 1 hour per decay tick
+auto_start_server: true
 ```
 
-See `config.yaml.example` for all options with documentation.
+### Embedding providers
 
-## Available tools
+| Provider | Env var | Notes |
+|----------|---------|-------|
+| `gemini` | `GEMINI_API_KEY` | Default. Free tier available. |
+| `openai` | `OPENAI_API_KEY` | Set `embedding_provider: openai` in config |
+| `local` | — | Requires `torch` + `sentence-transformers` |
+
+## Tools
 
 | Tool | Description |
 |------|-------------|
 | `memory_search` | Search memories by semantic similarity |
-| `memory_store` | Store a new memory with type, importance, associations |
+| `memory_store` | Store a new memory (type, importance, associations) |
 | `memory_store_batch` | Store multiple memories in one call |
 | `memory_forget` | Delete a specific memory by ID |
-| `memory_status` | Check server health and memory statistics |
+| `memory_status` | Server health and memory statistics |
 
-## Features
-
-- **Zero external dependencies** — uses only stdlib (`urllib`, no `requests`)
-- **PyYAML optional** — built-in simple YAML parser falls back gracefully
-- **Fault-tolerant** — errors return JSON, never crash the agent loop
-- **Cross-platform** — works on Linux, macOS, WSL
-- **Port collision detection** — fails fast with clear message if port is taken
-- **Orphan cleanup** — PID file + atexit handler prevents zombie servers
-- **Secure** — API keys passed via env var, never command-line arguments
-- **No-clobber install** — user-customized skills are preserved on reinstall
-
-## Skills
-
-The plugin includes Hermes skills that teach the agent how to use memory tools effectively:
-
-| Skill | Purpose |
-|-------|---------|
-| `remember` | When and how to store memories, classification guide |
-| `recall` | Proactive search triggers, query strategy, result interpretation |
-| `forget` | Safe deletion workflow with user confirmation |
-| `memory-status` | Health check and diagnostics |
-| `install` | Installation and setup reference |
-
-Skills are installed to `~/.hermes/skills/memory-decay/` by the install script.
-
-## Development
+## Install Script Options
 
 ```bash
-# Run tests
-python3 -m pytest tests/ -v
-
-# Run specific test
-python3 -m pytest tests/test_http_client.py -v
-
-# Install script test (clean slate)
-rm -rf ~/.hermes/plugins/hermes-memory-decay ~/.hermes/skills/memory-decay
-bash scripts/install.sh
+bash install.sh                  # Fresh install
+bash install.sh --update         # Update repos + plugin files
+bash install.sh --core /path     # Use existing memory-decay-core at /path
+bash install.sh -h               # Help
 ```
+
+Respects `HERMES_HOME` if set (defaults to `~/.hermes`).
 
 ## Architecture
 
 ```
 hermes-memory-decay/
+├── scripts/install.sh           # All-in-one installer + updater
 ├── src/hermes_memory_decay/
-│   ├── __init__.py          # Plugin entry: register(ctx), hooks
-│   ├── config.py            # Config loading (YAML parser, defaults, validation)
-│   ├── http_client.py       # urllib HTTP client (zero-dep)
-│   ├── server_manager.py    # Subprocess lifecycle, PID file, port check
-│   ├── schemas.py           # Tool JSON schemas
-│   ├── tools.py             # Tool handlers (fail-soft)
-│   ├── prompt.py            # System prompt fragment for agent
-│   └── plugin.yaml          # Hermes plugin manifest
-├── scripts/install.sh       # Install to ~/.hermes/
-├── skills/                  # Hermes skills (remember, recall, forget, ...)
-├── tests/                   # pytest suite (26 tests)
+│   ├── __init__.py              # Plugin entry: register(ctx), hooks
+│   ├── config.py                # Config loading (YAML, no PyYAML required)
+│   ├── http_client.py           # urllib client (zero-dep)
+│   ├── server_manager.py        # Sidecar lifecycle, PID file, port check
+│   ├── schemas.py               # Tool JSON schemas
+│   ├── tools.py                 # Tool handlers (fail-soft)
+│   ├── prompt.py                # System prompt injection
+│   └── plugin.yaml              # Hermes plugin manifest
+├── skills/                      # Agent skills (remember, recall, forget, ...)
+├── tests/                       # pytest suite
 └── pyproject.toml
+```
+
+## Features
+
+- **Zero external deps** — stdlib only (`urllib`, built-in YAML parser)
+- **Auto-install** — clones memory-decay-core, installs deps, generates config
+- **Idempotent update** — re-run anytime, config and data preserved
+- **Fault-tolerant** — errors return JSON, never crash the agent loop
+- **Cross-platform** — Linux, macOS, WSL
+- **Port collision detection** — fails fast with clear message
+- **Orphan cleanup** — PID file + atexit prevents zombie servers
+- **Secure** — API keys via env var, never CLI args
+- **No-clobber skills** — user customizations preserved on reinstall
+
+## Development
+
+```bash
+python3 -m pytest tests/ -v
 ```
 
 ## License
