@@ -1,0 +1,13 @@
+*$py.class
+*.egg-info/
+dist/
+build/
+.venv/
+.eggs/
+*.egg
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+*.so
+.env
+config.yaml
