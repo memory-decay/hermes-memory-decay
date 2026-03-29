@@ -55,7 +55,7 @@ fi
 # Copy skills (merge, don't clobber)
 if [ -d "$REPO_DIR/skills" ]; then
     mkdir -p "$SKILLS_DIR"
-    cp -r "$REPO_DIR/skills/"* "$SKILLS_DIR/"
+    cp -rn "$REPO_DIR/skills/"* "$SKILLS_DIR/"  # -r: recursive, -n: no-clobber
     echo "  Skills installed to: $SKILLS_DIR"
 fi
 

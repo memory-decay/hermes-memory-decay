@@ -82,14 +82,14 @@ def test_ensure_running_skips_if_healthy():
         assert mgr._process is mock_proc
 
 
-def test_stop_sends_sigterm():
+def test_stop_terminates_process():
     mgr = ServerManager(_make_config())
     mock_proc = MagicMock()
     mock_proc.poll.return_value = None
     mgr._process = mock_proc
 
     mgr.stop()
-    mock_proc.send_signal.assert_called()
+    mock_proc.terminate.assert_called()
     assert mgr._process is None
 
 

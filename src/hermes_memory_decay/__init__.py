@@ -117,8 +117,8 @@ def _on_session_end(**kwargs) -> None:
     try:
         client = _server_manager.get_client()
         client.auto_tick()
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("auto_tick on session end failed: %s", e)
 
 
 def _pre_llm_call(**kwargs) -> dict | None:

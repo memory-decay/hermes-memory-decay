@@ -7,17 +7,30 @@ graceful shutdown.
 
 from __future__ import annotations
 
+import atexit
 import logging
 import os
+import socket
 import signal
 import subprocess
 import threading
 import time
+from pathlib import Path
 from typing import Optional
 
 from .http_client import MemoryDecayHTTPClient
 
 logger = logging.getLogger(__name__)
+
+
+def _port_in_use(port: int, host: str = "127.0.0.1") -> bool:
+    """Check if a port is already bound on the given host."""
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.settimeout(1)
+            return s.connect_ex((host, port)) == 0
+    except OSError:
+        return False
 
 
 class ServerManager:
@@ -31,6 +44,15 @@ class ServerManager:
         self._max_restarts = config.get("max_restarts", 3)
         self._lock = threading.Lock()
         self._stopped = False
+        self._pid_file = Path(
+            os.path.join(
+                os.environ.get("HERMES_HOME", os.path.expanduser("~/.hermes")),
+                "memory-decay",
+                "server.pid",
+            )
+        )
+        # Clean up on exit
+        atexit.register(self.stop)
 
     def get_client(self) -> MemoryDecayHTTPClient:
         return self._client
@@ -48,6 +70,27 @@ class ServerManager:
                 except Exception:
                     pass
             self._start()
+
+    def _read_orphan_pid(self) -> Optional[int]:
+        """Read PID from file, check if the process is still alive."""
+        if not self._pid_file.exists():
+            return None
+        try:
+            pid = int(self._pid_file.read_text().strip())
+            os.kill(pid, 0)  # check if alive
+            return pid
+        except (ValueError, ProcessLookupError, PermissionError, OSError):
+            # Stale or invalid PID file
+            try:
+                self._pid_file.unlink(missing_ok=True)
+            except OSError:
+                pass
+            return None
+
+    def _write_pid_file(self, pid: int) -> None:
+        """Write current server PID to file."""
+        self._pid_file.parent.mkdir(parents=True, exist_ok=True)
+        self._pid_file.write_text(str(pid))
 
     def _start(self) -> None:
         """Spawn the server subprocess and wait for health."""
@@ -72,6 +115,26 @@ class ServerManager:
                 "Clone memory-decay-core and set the correct path in config.yaml."
             )
 
+        # Check for orphaned server from a previous session
+        orphan_pid = self._read_orphan_pid()
+        if orphan_pid is not None:
+            logger.warning(
+                "Found orphaned memory-decay server (PID %d). Killing it.", orphan_pid
+            )
+            try:
+                os.kill(orphan_pid, signal.SIGTERM if hasattr(signal, "SIGTERM") else signal.SIGINT)  # type: ignore
+                time.sleep(0.5)
+                os.kill(orphan_pid, 9)  # SIGKILL
+            except ProcessLookupError:
+                pass
+
+        # Check port availability
+        if _port_in_use(port):
+            raise RuntimeError(
+                f"Port {port} is already in use. "
+                "Either stop the service using it or set a different port in config.yaml."
+            )
+
         # Ensure DB directory exists
         db_dir = os.path.dirname(db_path)
         if db_dir:
@@ -89,11 +152,14 @@ class ServerManager:
         if self._config.get("embedding_model"):
             args.extend(["--embedding-model", self._config["embedding_model"]])
 
+        # Pass API key via environment variable, NOT command-line args
+        # (avoids ps aux leakage)
         api_key_env = self._config.get("embedding_api_key_env")
+        env = {**os.environ, "PYTHONPATH": os.path.join(memory_decay_path, "src")}
         if api_key_env:
             api_key = os.environ.get(api_key_env)
             if api_key:
-                args.extend(["--embedding-api-key", api_key])
+                env[api_key_env] = api_key
 
         if self._config.get("embedding_dim"):
             args.extend(["--embedding-dim", str(self._config["embedding_dim"])])
@@ -101,8 +167,6 @@ class ServerManager:
             args.extend(["--experiment-dir", self._config["experiment_dir"]])
         if self._config.get("tick_interval_seconds"):
             args.extend(["--tick-interval", str(self._config["tick_interval_seconds"])])
-
-        env = {**os.environ, "PYTHONPATH": os.path.join(memory_decay_path, "src")}
 
         logger.info("Starting memory-decay server on port %d", port)
         logger.debug("Server command: %s", " ".join(args))
@@ -114,6 +178,8 @@ class ServerManager:
             stdout=subprocess.DEVNULL,
             stderr=subprocess.PIPE,
         )
+
+        self._write_pid_file(self._process.pid)
 
         # Drain stderr in background
         threading.Thread(target=self._read_stderr, daemon=True).start()
@@ -150,10 +216,18 @@ class ServerManager:
         with self._lock:
             if self._process is not None:
                 try:
-                    self._process.send_signal(signal.SIGTERM)
+                    self._process.terminate()  # Cross-platform SIGTERM equivalent
                     self._process.wait(timeout=5)
                 except Exception:
-                    self._process.kill()
+                    try:
+                        self._process.kill()
+                    except Exception:
+                        pass
                 finally:
                     self._process = None
                 logger.info("memory-decay server stopped")
+            # Always clean up PID file
+            try:
+                self._pid_file.unlink(missing_ok=True)
+            except OSError:
+                pass

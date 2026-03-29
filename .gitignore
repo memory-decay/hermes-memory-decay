@@ -1,3 +1,6 @@
+__pycache__/
+*.pyc
+*.pyo
 *$py.class
 *.egg-info/
 dist/
@@ -11,3 +14,8 @@ build/
 *.so
 .env
 config.yaml
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
