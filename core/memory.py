@@ -8,11 +8,25 @@ from memory_decay import MemoryStore
 
 DECAY_TICKS_WINDOW = 100
 
+# Store-level lock registry: ensures one lock per underlying store (by DB connection id).
+# This prevents race conditions when multiple Memory instances wrap the same store.
+_store_locks: dict[int, threading.RLock] = {}
+_store_locks_guard = threading.Lock()
+
+
+def _get_store_lock(store: MemoryStore) -> threading.RLock:
+    """Get or create a per-store RLock, keyed by the store's DB connection id()."""
+    db_id = id(store._db)
+    with _store_locks_guard:
+        if db_id not in _store_locks:
+            _store_locks[db_id] = threading.RLock()
+        return _store_locks[db_id]
+
 
 class Memory:
     def __init__(self, store):
         self._store = store
-        self._lock = threading.RLock()
+        self._lock = _get_store_lock(store)
         self._init_feedback_schema()
 
     def _init_feedback_schema(self):
@@ -77,10 +91,13 @@ class Memory:
                     "VALUES (?, ?, ?, ?, ?, ?)",
                     (mid, sig, strength, tick, source, now)
                 )
-                node = self._store.get_node(mid)
-                if node is None:
+                # Read current stability directly from DB (avoids stale cache from get_node)
+                row = self._store._db.execute(
+                    "SELECT stability_score FROM memories WHERE id = ?", (mid,)
+                ).fetchone()
+                if row is None:
                     continue
-                stability = float(node.get("stability_score", 0.0))
+                stability = float(row[0])
                 if sig == "positive":
                     gap = max(1.0 - stability, 0.0)
                     new_stability = min(1.0, stability + gap * strength * 0.6)
@@ -109,14 +126,16 @@ class Memory:
                 (memory_id, "negative", window_start)
             ).fetchone()[0]
             neg_feedback_blocked = bool(neg_rows > 0)
-            node = self._store.get_node(memory_id)
-            if node is None:
+            row = self._store._db.execute(
+                "SELECT stability_score FROM memories WHERE id = ?", (memory_id,)
+            ).fetchone()
+            if row is None:
                 return {
                     "reinforced": False, "decay_rate_reduced": False,
                     "last_activated_tick": 0, "neg_feedback_blocked": neg_feedback_blocked,
                     "stability_change": 0.0
                 }
-            stability = float(node.get("stability_score", 0.0))
+            stability = float(row[0])
             old_stability = stability
             self._store._db.execute(
                 "UPDATE memories SET last_activated_tick = ? WHERE id = ?",
@@ -140,10 +159,9 @@ class Memory:
                 "stability_change": new_stability - old_stability
             }
 
-    def set_stability(self, memory_id, stability, current_tick=None):
+    def set_stability(self, memory_id, stability):
+        """Set stability score directly. Value is clamped to [0.0, 1.0]."""
         with self._lock:
-            if current_tick is None:
-                current_tick = int(self._store.get_metadata("current_tick", "0"))
             capped = min(max(float(stability), 0.0), 1.0)
             self._store._db.execute(
                 "UPDATE memories SET stability_score = ? WHERE id = ?",
