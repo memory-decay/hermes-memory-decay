@@ -1,0 +1,40 @@
+# hermes-memory-decay plugin configuration
+
+# Path to Python interpreter (default: system python3)
+# python_path: python3
+
+# Path to memory-decay-core repository
+# memory_decay_path: ~/workspace/memory-decay-core
+
+# Server HTTP port
+# port: 8100
+
+# SQLite database path for memory storage
+# db_path: ~/.hermes/memory-decay/memories.db
+
+# Embedding provider: gemini, openai, or local
+# embedding_provider: gemini
+
+# Embedding model name (provider-specific default if omitted)
+# embedding_model: null
+
+# Environment variable name containing the embedding API key
+# embedding_api_key_env: GEMINI_API_KEY
+
+# Embedding dimension (provider-specific default if omitted)
+# embedding_dim: null
+
+# Experiment directory for structured outputs (optional)
+# experiment_dir: null
+
+# Seconds per decay tick (default: 1 hour)
+# tick_interval_seconds: 3600
+
+# Automatically start the server on session begin
+# auto_start_server: true
+
+# Server startup timeout in milliseconds
+# server_startup_timeout_ms: 15000
+
+# Max server restart attempts before giving up
+# max_restarts: 3
