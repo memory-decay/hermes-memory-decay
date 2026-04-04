@@ -2,17 +2,16 @@
 # hermes-memory-decay — all-in-one installer and updater
 #
 # Usage:
-#   bash install.sh              Fresh install (clone core, generate config)
+#   bash install.sh              Fresh install (clone core + deps + register)
 #   bash install.sh --update     Update repos + plugin files, preserve config
 #   bash install.sh --check      Check if updates are available (no changes)
 #   bash install.sh --core /path Use existing memory-decay-core at /path
 #
-# Designed to be copy-pasted into AI agents (Claude Code, Hermes, etc.)
 # No interactive prompts — fully automatable.
 #
 # Environment:
 #   HERMES_HOME     Override default ~/.hermes
-#   GEMINI_API_KEY   Checked after install, warns if missing
+#   MEMORY_DECAY_EMBEDDING_PROVIDER  "local" (default), "gemini", or "openai"
 
 set -euo pipefail
 
@@ -36,11 +35,11 @@ HERMES_HOME="${HERMES_HOME:-$HOME/.hermes}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="$(dirname "$SCRIPT_DIR")"
 PLUGIN_DIR="$HERMES_HOME/plugins/hermes-memory-decay"
+MEMORY_PLUGIN_DIR="$HERMES_HOME/hermes-agent/plugins/memory/hermes-memory-decay"
 SKILLS_DIR="$HERMES_HOME/skills/memory-decay"
 DATA_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/hermes-memory-decay"
 CORE_NAME="memory-decay-core"
 CORE_REPO="https://github.com/memory-decay/memory-decay-core.git"
-PLUGIN_REPO="https://github.com/memory-decay/hermes-memory-decay.git"
 
 # ── Logging ───────────────────────────────────────────────────────────────
 log()  { printf "[INFO]  %s\n" "$*"; }
@@ -48,17 +47,14 @@ warn() { printf "[WARN]  %s\n" "$*" >&2; }
 err()  { printf "[ERROR] %s\n" "$*" >&2; }
 
 # ── Version helpers ───────────────────────────────────────────────────────
-# Read version from plugin.yaml
 get_local_version() {
-    local yaml="$PLUGIN_DIR/plugin.yaml"
-    if [[ -f "$yaml" ]]; then
-        grep '^version:' "$yaml" 2>/dev/null | head -1 | sed 's/^version:[[:space:]]*//' | tr -d '"' || echo "unknown"
+    if [[ -f "$REPO_DIR/pyproject.toml" ]]; then
+        grep '^version' "$REPO_DIR/pyproject.toml" | head -1 | sed 's/.*= *"//' | tr -d '"' || echo "unknown"
     else
         echo "not installed"
     fi
 }
 
-# Get latest version tag from GitHub (lightweight, no clone)
 get_remote_version() {
     local version
     version=$(git ls-remote --tags --sort=-v:refname \
@@ -67,7 +63,6 @@ get_remote_version() {
     echo "${version:-unknown}"
 }
 
-# Count new commits on remote (compared to local)
 get_pending_commits() {
     local repo_dir="$1"
     if [[ ! -d "$repo_dir/.git" ]]; then
@@ -95,7 +90,7 @@ find_core() {
     if [[ -f "$PLUGIN_DIR/config.yaml" ]]; then
         local existing
         existing=$(grep '^memory_decay_path:' "$PLUGIN_DIR/config.yaml" 2>/dev/null | \
-            head -1 | sed 's/^memory_decay_path:[[:space:]]*//' || true)
+            head -1 | sed 's/^memory_decay_path:[[:space:]]*//' | tr -d '"' || true)
         if [[ -n "$existing" ]]; then
             existing="${existing/#\~/$HOME}"
             if [[ -d "$existing/src/memory_decay" ]]; then
@@ -130,10 +125,6 @@ clone_core() {
         err "Failed to clone memory-decay-core"
         exit 1
     }
-    if [[ ! -d "$DATA_DIR/$CORE_NAME/src/memory_decay" ]]; then
-        err "Cloned repo has unexpected structure"
-        exit 1
-    fi
     echo "$DATA_DIR/$CORE_NAME"
 }
 
@@ -150,6 +141,7 @@ update_core() {
 # ── Install core Python deps ─────────────────────────────────────────────
 install_core_deps() {
     local core_path="$1"
+    local embedding_provider="${2:-local}"
     local py="python3"
 
     if [[ -f "$core_path/.venv/bin/python" ]]; then
@@ -158,12 +150,12 @@ install_core_deps() {
         py="$core_path/venv/bin/python"
     fi
 
-    log "Installing memory-decay-core deps ($py) ..." >&2
-    if (cd "$core_path" && "$py" -m pip install -e ".[server]" --quiet >/dev/null 2>&1); then
-        :
+    if [[ "$embedding_provider" == "local" ]]; then
+        log "Installing memory-decay-core with local embedding deps ..." >&2
+        (cd "$core_path" && "$py" -m pip install -e ".[local]" --quiet 2>&1) || warn "pip install failed for core (continuing)"
     else
-        warn "pip install failed — you may need to run it manually:" >&2
-        warn "  cd $core_path && $py -m pip install -e '.[server]'" >&2
+        log "Installing memory-decay-core ..." >&2
+        (cd "$core_path" && "$py" -m pip install -e "." --quiet 2>&1) || warn "pip install failed for core (continuing)"
     fi
 
     echo "$py"
@@ -173,11 +165,10 @@ install_core_deps() {
 find_db() {
     local core_path="$1"
 
-    # 1. Existing config (always respect user's current choice)
     if [[ -f "$PLUGIN_DIR/config.yaml" ]]; then
         local existing
         existing=$(grep '^db_path:' "$PLUGIN_DIR/config.yaml" 2>/dev/null | \
-            head -1 | sed 's/^db_path:[[:space:]]*//' || true)
+            head -1 | sed 's/^db_path:[[:space:]]*//' | tr -d '"' || true)
         if [[ -n "$existing" ]]; then
             existing="${existing/#\~/$HOME}"
             if [[ -f "$existing" ]]; then
@@ -187,7 +178,6 @@ find_db() {
         fi
     fi
 
-    # 2. Common locations inside core repo
     local db_candidates=(
         "$core_path/data/memories.db"
         "$core_path/memories.db"
@@ -199,15 +189,13 @@ find_db() {
         fi
     done
 
-    # 3. Default new location
     echo "$HERMES_HOME/memory-decay/memories.db"
 }
 
 # ── Generate config.yaml ─────────────────────────────────────────────────
 generate_config() {
     local core_path="$1"
-    local py_path="$2"
-    local api_key_env="${3:-GEMINI_API_KEY}"
+    local embedding_provider="${2:-local}"
     local db_path
     db_path=$(find_db "$core_path")
 
@@ -215,12 +203,10 @@ generate_config() {
 # hermes-memory-decay — auto-generated by install.sh
 # Edit freely. Reinstalling (--update) will NOT overwrite this file.
 
-memory_decay_path: $core_path
-python_path: $py_path
-port: 8100
-db_path: $db_path
-embedding_provider: gemini
-embedding_api_key_env: $api_key_env
+memory_decay_path: "$core_path"
+port: "8100"
+db_path: "$db_path"
+embedding_provider: "$embedding_provider"
 tick_interval_seconds: 3600
 auto_start_server: true
 server_startup_timeout_ms: 15000
@@ -228,15 +214,34 @@ max_restarts: 3
 EOF
 }
 
-# ── Shared install/update steps ──────────────────────────────────────────
-deploy_plugin_files() {
-    mkdir -p "$PLUGIN_DIR"
-    cp "$REPO_DIR/src/hermes_memory_decay/"*.py "$PLUGIN_DIR/"
-    cp "$REPO_DIR/src/hermes_memory_decay/plugin.yaml" "$PLUGIN_DIR/"
-    if [[ -f "$REPO_DIR/src/hermes_memory_decay/config.yaml.example" ]]; then
-        cp "$REPO_DIR/src/hermes_memory_decay/config.yaml.example" "$PLUGIN_DIR/config.yaml.example"
-    fi
-    log "Plugin files -> $PLUGIN_DIR"
+# ── Register plugin with Hermes Agent ────────────────────────────────────
+register_memory_provider() {
+    # Create plugins/memory/hermes-memory-decay/ for MemoryProvider discovery
+    mkdir -p "$MEMORY_PLUGIN_DIR"
+
+    cat > "$MEMORY_PLUGIN_DIR/__init__.py" << 'PYEOF'
+from hermes_memory_decay.memory_provider import MemoryDecayMemoryProvider
+
+def register(ctx) -> None:
+    ctx.register_memory_provider(MemoryDecayMemoryProvider())
+PYEOF
+
+    cat > "$MEMORY_PLUGIN_DIR/plugin.yaml" << YAMLEOF
+name: hermes-memory-decay
+version: "$(get_local_version)"
+description: "Human-like memory with natural decay."
+pip_dependencies: []
+hooks:
+  - on_session_end
+YAMLEOF
+
+    log "Memory provider registered at $MEMORY_PLUGIN_DIR"
+}
+
+# ── Deploy plugin files (pip install) ────────────────────────────────────
+install_plugin_package() {
+    log "Installing hermes-memory-decay package ..." >&2
+    pip install -e "$REPO_DIR" --quiet 2>&1 || warn "pip install failed for plugin (continuing)"
 }
 
 deploy_skills() {
@@ -248,23 +253,23 @@ deploy_skills() {
 }
 
 check_api_key() {
-    # Read provider from config
-    local provider="gemini"
+    local provider="local"
     if [[ -f "$PLUGIN_DIR/config.yaml" ]]; then
         provider=$(grep '^embedding_provider:' "$PLUGIN_DIR/config.yaml" 2>/dev/null | \
-            head -1 | sed 's/^embedding_provider:[[:space:]]*//' || echo "gemini")
+            head -1 | sed 's/^embedding_provider:[[:space:]]*//' | tr -d '"' || echo "local")
     fi
     if [[ "$provider" == "local" ]]; then
         log "Embedding provider: local (no API key needed)"
         return
     fi
+
     local api_key_env="GEMINI_API_KEY"
     if [[ -f "$PLUGIN_DIR/config.yaml" ]]; then
         api_key_env=$(grep '^embedding_api_key_env:' "$PLUGIN_DIR/config.yaml" 2>/dev/null | \
-            head -1 | sed 's/^embedding_api_key_env:[[:space:]]*//' || echo "GEMINI_API_KEY")
+            head -1 | sed 's/^embedding_api_key_env:[[:space:]]*//' | tr -d '"' || echo "GEMINI_API_KEY")
     fi
     if [[ -z "${!api_key_env:-}" ]]; then
-        warn "Set $api_key_env before first use (or set embedding_provider: local to skip):"
+        warn "Set $api_key_env before first use (or set embedding_provider: local):"
         warn "  export $api_key_env=your-key-here"
     else
         log "$api_key_env is set"
@@ -275,12 +280,13 @@ print_summary() {
     echo ""
     log "Done."
     echo ""
-    echo "  Plugin:  $PLUGIN_DIR"
+    echo "  Config:  $PLUGIN_DIR/config.yaml"
+    echo "  Provider: $MEMORY_PLUGIN_DIR"
     echo "  Skills:  $SKILLS_DIR"
     echo "  Core:    ${core_path:-<not found>}"
-    echo "  Config:  $PLUGIN_DIR/config.yaml"
     echo ""
     echo "  Verify:  hermes plugins list"
+    echo "  Setup:   hermes memory setup  → select hermes-memory-decay"
     echo ""
 }
 
@@ -288,20 +294,20 @@ print_summary() {
 do_check() {
     log "Checking for updates ..."
 
-    # 1. Local version
+    local local_ver
     local_ver=$(get_local_version)
     log "  Installed version: $local_ver"
 
-    # 2. Remote version (from tags)
+    local remote_ver
     remote_ver=$(get_remote_version)
     if [[ "$remote_ver" != "unknown" ]]; then
         log "  Latest release:    $remote_ver"
     fi
 
-    # 3. Pending commits
+    local core_path=""
+    local plugin_pending
+    local core_pending="N/A"
     plugin_pending=$(get_pending_commits "$REPO_DIR")
-    core_path=""
-    core_pending="N/A"
     if core_path=$(find_core 2>/dev/null); then
         core_pending=$(get_pending_commits "$core_path")
     fi
@@ -322,7 +328,6 @@ do_check() {
 
 # ── Main ─────────────────────────────────────────────────────────────────
 main() {
-    # Pre-flight
     if ! command -v python3 &>/dev/null; then
         err "python3 not found. Install Python 3.10+ first."
         exit 1
@@ -332,11 +337,12 @@ main() {
         exit 1
     fi
 
-    # ── Check mode (no changes) ──
     if [[ "$MODE" == "check" ]]; then
         do_check
         return 0
     fi
+
+    local embedding_provider="${MEMORY_DECAY_EMBEDDING_PROVIDER:-local}"
 
     log "hermes-memory-decay $MODE"
     log "  Hermes:  $HERMES_HOME"
@@ -353,7 +359,7 @@ main() {
         fi
         if core_path=$(find_core 2>/dev/null); then
             update_core "$core_path"
-            py_path=$(install_core_deps "$core_path")
+            py_path=$(install_core_deps "$core_path" "$embedding_provider")
         else
             warn "memory-decay-core not found — skipping core update"
         fi
@@ -363,24 +369,27 @@ main() {
         else
             core_path=$(clone_core)
         fi
-        py_path=$(install_core_deps "$core_path")
+        py_path=$(install_core_deps "$core_path" "$embedding_provider")
     fi
 
-    # ── Step 2: Plugin files ──
-    deploy_plugin_files
+    # ── Step 2: Plugin package (pip install) ──
+    install_plugin_package
 
-    # ── Step 3: Config ──
+    # ── Step 3: Register memory provider ──
+    register_memory_provider
+
+    # ── Step 4: Config ──
     if [[ -f "$PLUGIN_DIR/config.yaml" ]]; then
         log "Existing config.yaml preserved"
     elif [[ -n "$core_path" ]]; then
-        generate_config "$core_path" "$py_path"
-        log "Generated config.yaml (memory_decay_path=$core_path)"
+        generate_config "$core_path" "$embedding_provider"
+        log "Generated config.yaml"
     fi
 
-    # ── Step 4: Skills ──
+    # ── Step 5: Skills ──
     deploy_skills
 
-    # ── Step 5: Summary ──
+    # ── Step 6: Summary ──
     check_api_key
     print_summary
 }
