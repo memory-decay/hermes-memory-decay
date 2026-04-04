@@ -1,7 +1,8 @@
-"""MemoryProvider implementation for hermes-memory-decay.
+"""Memory provider for hermes-memory-decay.
 
-Implements the MemoryProvider ABC. Communicates with an external
-memory-decay FastAPI server via ServerManager + MemoryDecayHTTPClient.
+Communicates with an external memory-decay FastAPI server via
+ServerManager + MemoryDecayHTTPClient. This class is duck-typed;
+the agent-side plugin wrapper inherits from MemoryProvider.
 """
 
 from __future__ import annotations
@@ -11,13 +12,16 @@ import logging
 import threading
 from typing import Any, Dict, List, Optional
 
-from agent.memory_provider import MemoryProvider
-
 logger = logging.getLogger(__name__)
 
 
-class MemoryDecayMemoryProvider(MemoryProvider):
-    """Hermes-memory-decay provider using external HTTP server."""
+class MemoryDecayMemoryProvider:
+    """Hermes-memory-decay provider using external HTTP server.
+
+    This class implements the MemoryProvider interface via duck-typing.
+    The agent-side plugin (__init__.py) wraps it with an adapter that
+    inherits from agent.memory_provider.MemoryProvider.
+    """
 
     def __init__(self):
         self._server_manager = None
