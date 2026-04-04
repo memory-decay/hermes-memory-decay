@@ -33,13 +33,21 @@ class MemoryDecayMemoryProvider:
         return "hermes-memory-decay"
 
     def is_available(self) -> bool:
-        if not self._config:
-            return False
-        memory_decay_path = self._config.get("memory_decay_path", "")
-        if not memory_decay_path:
-            return False
+        """Check prerequisites: dependencies installed and config exists.
+
+        Called before initialize(), so cannot rely on self._config.
+        """
+        import os
         from pathlib import Path
-        return Path(memory_decay_path).is_dir()
+
+        try:
+            import fastapi  # noqa: F401
+        except ImportError:
+            return False
+
+        hermes_home = os.environ.get("HERMES_HOME", str(Path.home() / ".hermes"))
+        config_path = Path(hermes_home) / "plugins" / "hermes-memory-decay" / "config.yaml"
+        return config_path.exists()
 
     def initialize(self, session_id: str, **kwargs) -> None:
         from pathlib import Path

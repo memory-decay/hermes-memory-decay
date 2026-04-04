@@ -13,17 +13,18 @@ class TestMemoryDecayMemoryProvider:
         provider = MemoryDecayMemoryProvider()
         assert provider.name == "hermes-memory-decay"
 
-    def test_is_available_returns_false_when_not_configured(self):
+    def test_is_available_returns_false_when_config_missing(self):
         from hermes_memory_decay.memory_provider import MemoryDecayMemoryProvider
         provider = MemoryDecayMemoryProvider()
-        provider._config = {}
-        assert provider.is_available() is False
+        with patch.dict("os.environ", {"HERMES_HOME": "/nonexistent_hermes_home"}):
+            assert provider.is_available() is False
 
-    def test_is_available_returns_false_when_path_missing(self):
+    def test_is_available_returns_true_when_config_exists(self):
         from hermes_memory_decay.memory_provider import MemoryDecayMemoryProvider
         provider = MemoryDecayMemoryProvider()
-        provider._config = {"memory_decay_path": "/nonexistent/path"}
-        assert provider.is_available() is False
+        with patch.dict("os.environ", {"HERMES_HOME": "/tmp"}, clear=False):
+            with patch("pathlib.Path.exists", return_value=True):
+                assert provider.is_available() is True
 
     def test_get_tool_schemas_returns_5_tools(self):
         from hermes_memory_decay.memory_provider import MemoryDecayMemoryProvider
