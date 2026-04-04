@@ -37,9 +37,17 @@ class ServerManager:
     """Spawn and manage the memory-decay server process."""
 
     def __init__(self, config: dict):
-        self._config = config
+        # Normalize config types — save_config() writes everything as strings
+        self._config = {
+            **config,
+            "port": int(config.get("port", 8100)),
+            "tick_interval_seconds": int(config.get("tick_interval_seconds", 3600)),
+            "server_startup_timeout_ms": int(config.get("server_startup_timeout_ms", 15000)),
+            "max_restarts": int(config.get("max_restarts", 3)),
+            "embedding_dim": int(config["embedding_dim"]) if config.get("embedding_dim") else None,
+        }
         self._process: Optional[subprocess.Popen] = None
-        self._client = MemoryDecayHTTPClient(port=config["port"])
+        self._client = MemoryDecayHTTPClient(port=self._config["port"])
         self._restart_count = 0
         self._max_restarts = config.get("max_restarts", 3)
         self._lock = threading.Lock()
@@ -128,12 +136,20 @@ class ServerManager:
             except ProcessLookupError:
                 pass
 
-        # Check port availability
+        # Check port availability — if a healthy server is already listening, reuse it
         if _port_in_use(port):
-            raise RuntimeError(
-                f"Port {port} is already in use. "
-                "Either stop the service using it or set a different port in config.yaml."
-            )
+            try:
+                self._client.health()
+                logger.info(
+                    "memory-decay server already running on port %d — reusing existing instance",
+                    port,
+                )
+                return
+            except Exception:
+                raise RuntimeError(
+                    f"Port {port} is in use but health check failed. "
+                    "Either stop the service using it or set a different port in config.yaml."
+                )
 
         # Ensure DB directory exists
         db_dir = os.path.dirname(db_path)

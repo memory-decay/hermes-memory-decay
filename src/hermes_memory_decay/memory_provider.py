@@ -33,17 +33,15 @@ class MemoryDecayMemoryProvider:
         return "hermes-memory-decay"
 
     def is_available(self) -> bool:
-        """Check prerequisites: dependencies installed and config exists.
+        """Check prerequisites: plugin config file exists.
 
         Called before initialize(), so cannot rely on self._config.
+        Note: we intentionally do NOT check for server-side dependencies
+        (fastapi, etc.) — the agent is an HTTP *client* that talks to the
+        memory-decay server; it never imports the server stack.
         """
         import os
         from pathlib import Path
-
-        try:
-            import fastapi  # noqa: F401
-        except ImportError:
-            return False
 
         hermes_home = os.environ.get("HERMES_HOME", str(Path.home() / ".hermes"))
         config_path = Path(hermes_home) / "plugins" / "hermes-memory-decay" / "config.yaml"
